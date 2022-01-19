@@ -90,7 +90,6 @@ class Task:
     description: Optional[str]
     top_artifact: ArtifactType
     labels: List[Label]
-    training_dataset: Dataset
     test_datasets: Dict[Dataset, DataPointToLabelFunction]
 
     def __hash__(self):
@@ -103,28 +102,19 @@ class Task:
             raise ValueError(f'At least 1 test dataset has to be specified')
 
         dataset_name_set = set()
-        for dataset in self.datasets:
+        for dataset in self.test_datasets.keys():
             count_before = len(dataset_name_set)
             dataset_name_set.add(dataset.id)
             count_after = len(dataset_name_set)
             if count_after == count_before:
                 raise ValueError(f"Dataset {dataset.id} is present more than once.")
 
-    @property
-    def datasets(self) -> List[Dataset]:
-        return [self.training_dataset] + list(self.test_datasets.keys())
-
-    def get_dataset_by_id(self, dataset_id: str) -> Dataset:
-        for dataset in self.datasets:
-            if dataset.id == dataset_id:
-                return dataset
-        raise ValueError(f'Unknown dataset: {dataset_id}')
-
 
 @dataclass(frozen=True)
 class Experiment:
     name: str
     task: Task
+    train_dataset: Dataset
     heuristics_classifier: str
 
     def __post_init__(self):
@@ -142,6 +132,17 @@ class Experiment:
     @property
     def revision(self) -> str:
         return self.heuristics_classifier.split('@')[-1]
+
+    def get_dataset_by_id(self, dataset_id: str) -> Dataset:
+        for dataset in self.datasets:
+            if dataset.id == dataset_id:
+                return dataset
+        raise ValueError(f'Unknown dataset: {dataset_id}')
+
+
+    @property
+    def datasets(self) -> List[Dataset]:
+        return list(self.task.test_datasets.keys()) + [self.train_dataset]
 
 
 @dataclass(frozen=True)
