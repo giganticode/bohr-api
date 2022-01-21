@@ -163,9 +163,9 @@ class Workspace:
         raise ValueError(f'Unknown task: {task_name}')
 
     def get_dataset_by_id(self, id: str) -> Dataset:
-        for run in self.experiments:
+        for exp in self.experiments:
             try:
-                return run.task.get_dataset_by_id(id)
+                return exp.get_dataset_by_id(id)
             except ValueError:
                 pass
         raise ValueError(f'Unknown dataset: {id}')
