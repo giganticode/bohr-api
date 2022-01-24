@@ -18,8 +18,16 @@ class Issue(Artifact):
         return self.raw_data['body']
 
     @property
-    def labels(self):
-        return self.raw_data['labels'] if ('labels' in self.raw_data and self.raw_data['labels'] is not None) else []
+    def labels(self) -> List[str]:
+        """
+        >>> from types import SimpleNamespace
+        >>> issue = Issue({})
+        >>> issue.labels
+        ''
+        """
+        if 'labels' not in self.raw_data or self.raw_data['labels'] is None:
+            return []
+        return list(map(lambda s: s.strip().lower(), self.raw_data['labels'].split(',')))
 
     @cached_property
     def stemmed_labels(self) -> Set[str]:
