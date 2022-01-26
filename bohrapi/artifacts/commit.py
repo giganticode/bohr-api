@@ -33,7 +33,7 @@ class Commit(Artifact):
 
     @cached_property
     def clean_message(self):
-        if self.raw_data['message'] is None or 'message' not in self.raw_data:
+        if 'message' not in self.raw_data or self.raw_data['message'] is None:
             CommitMessage(None)
         from bohrapi.util.messagecleaner import clean_message
         cleaned_message = clean_message(str(self.raw_data['message'])).clean_message
