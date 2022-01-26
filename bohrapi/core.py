@@ -109,6 +109,15 @@ class Task:
             if count_after == count_before:
                 raise ValueError(f"Dataset {dataset.id} is present more than once.")
 
+    def get_dataset_by_id(self, dataset_id: str) -> Dataset:
+        for dataset in self.get_test_datasets():
+            if dataset.id == dataset_id:
+                return dataset
+        raise ValueError(f"Dataset {dataset_id} is not found in task {self.name}")
+
+    def get_test_datasets(self) -> List[Dataset]:
+        return list(self.test_datasets.keys())
+
 
 @dataclass(frozen=True)
 class Experiment:
@@ -139,10 +148,9 @@ class Experiment:
                 return dataset
         raise ValueError(f'Unknown dataset: {dataset_id}')
 
-
     @property
     def datasets(self) -> List[Dataset]:
-        return list(self.task.test_datasets.keys()) + [self.train_dataset]
+        return self.task.get_test_datasets() + [self.train_dataset]
 
 
 @dataclass(frozen=True)
