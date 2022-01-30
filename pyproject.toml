@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "bohr-api"
-version = "0.2.2"
+version = "0.3.0"
 description = ""
 authors = ["hlib <hlibbabii@gmail.com>"]
 packages = [
