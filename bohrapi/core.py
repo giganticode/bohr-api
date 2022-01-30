@@ -3,10 +3,10 @@ import logging
 from abc import ABC
 from dataclasses import dataclass, field
 from subprocess import CalledProcessError
-from types import SimpleNamespace
-from typing import Callable, Optional, Type, Dict, TypeVar, List
+from typing import Callable, Optional, Type, Dict, TypeVar, List, Set, Tuple
 
-import pandas as pd
+from frozendict import frozendict
+
 from bohrlabels.core import Labels, Label
 
 logger = logging.getLogger(__name__)
@@ -79,6 +79,12 @@ class Dataset(ABC):
     query: Optional[Dict] = field(compare=False, default=None)
     n_datapoints: Optional[int] = None
 
+    def __lt__(self, other):
+        if not isinstance(other, Dataset):
+            raise ValueError(f'Cannot compare {Dataset.__name__} with {type(other).__name__}')
+
+        return self.id < other.id
+
 
 DataPointToLabelFunction = Callable
 
@@ -101,14 +107,6 @@ class Task:
         if len(self.test_datasets) == 0:
             raise ValueError(f'At least 1 test dataset has to be specified')
 
-        dataset_name_set = set()
-        for dataset in self.test_datasets.keys():
-            count_before = len(dataset_name_set)
-            dataset_name_set.add(dataset.id)
-            count_after = len(dataset_name_set)
-            if count_after == count_before:
-                raise ValueError(f"Dataset {dataset.id} is present more than once.")
-
     def get_dataset_by_id(self, dataset_id: str) -> Dataset:
         for dataset in self.get_test_datasets():
             if dataset.id == dataset_id:
@@ -125,10 +123,19 @@ class Experiment:
     task: Task
     train_dataset: Dataset
     heuristics_classifier: str
+    extra_test_datasets: Dict[Dataset, Callable] = field(default_factory=frozendict)
 
     def __post_init__(self):
         if self.heuristic_groups is not None and len(self.heuristic_groups) == 0:
             raise ValueError(f'At least 1 heuristic group has to be specified')
+
+        dataset_name_set = set()
+        for dataset in self.datasets:
+            count_before = len(dataset_name_set)
+            dataset_name_set.add(dataset.id)
+            count_after = len(dataset_name_set)
+            if count_after == count_before:
+                raise ValueError(f"Dataset {dataset.id} is present more than once.")
 
     @property
     def heuristic_groups(self) -> Optional[List[str]]:
@@ -150,7 +157,7 @@ class Experiment:
 
     @property
     def datasets(self) -> List[Dataset]:
-        return self.task.get_test_datasets() + [self.train_dataset]
+        return self.task.get_test_datasets() + [self.train_dataset] + list(self.extra_test_datasets.keys())
 
 
 @dataclass(frozen=True)
