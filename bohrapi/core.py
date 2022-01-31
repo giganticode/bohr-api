@@ -3,11 +3,11 @@ import logging
 from abc import ABC
 from dataclasses import dataclass, field
 from subprocess import CalledProcessError
-from typing import Callable, Optional, Type, Dict, TypeVar, List, Set, Tuple
+from typing import Callable, Optional, Type, Dict, TypeVar, List, Set, Tuple, Union
 
 from frozendict import frozendict
 
-from bohrlabels.core import Labels, Label
+from bohrlabels.core import Labels, Label, NumericLabel, LabelSubclass, to_numeric_label
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +77,7 @@ class Dataset(ABC):
     id: str
     top_artifact: ArtifactType
     query: Optional[Dict] = field(compare=False, default=None)
+    projection: Optional[Dict] = field(compare=False, default=None)
     n_datapoints: Optional[int] = None
 
     def __lt__(self, other):
@@ -95,15 +96,63 @@ class Task:
     author: str
     description: Optional[str]
     top_artifact: ArtifactType
-    labels: List[Label]
+    labels: List[Union[Label, NumericLabel]] = field()
     test_datasets: Dict[Dataset, DataPointToLabelFunction]
+    hierarchy: Optional[Type[LabelSubclass]] = None
 
     def __hash__(self):
         return hash(self.name)
 
+    @staticmethod
+    def infer_hierarchy(labels: List[Union[Label, NumericLabel]], hierarchy: Optional[Type[LabelSubclass]]) -> Type[LabelSubclass]:
+        """
+        >>> from bohrlabels.labels import CommitLabel, SStuB
+        >>> Task.infer_hierarchy([CommitLabel.Refactoring, CommitLabel.Feature], None)
+        <enum 'CommitLabel'>
+        >>> Task.infer_hierarchy([CommitLabel.Refactoring, CommitLabel.Feature], CommitLabel)
+        <enum 'CommitLabel'>
+        >>> Task.infer_hierarchy([CommitLabel.Refactoring, CommitLabel.Feature], SStuB)
+        Traceback (most recent call last):
+        ...
+        ValueError: Passed hierarchy is: <enum 'SStuB'>, and one of the categories is <enum 'CommitLabel'>
+        >>> Task.infer_hierarchy([SStuB.WrongFunction, CommitLabel.Feature], None)
+        Traceback (most recent call last):
+        ...
+        ValueError: Cannot specify categories from different hierarchies: <enum 'CommitLabel'> and <enum 'SStuB'>
+        """
+        inferred_hierarchy = hierarchy
+        for label in labels:
+            if isinstance(label, Label):
+                label = label.to_numeric_label()
+
+            if isinstance(label, NumericLabel):
+                if inferred_hierarchy is None:
+                    inferred_hierarchy = label.hierarchy
+                elif label.hierarchy != inferred_hierarchy:
+                    if hierarchy is None:
+                        raise ValueError(
+                            f"Cannot specify categories from different hierarchies: {label.hierarchy} and {inferred_hierarchy}"
+                        )
+                    else:
+                        raise ValueError(
+                            f"Passed hierarchy is: {inferred_hierarchy}, and one of the categories is {label.hierarchy}"
+                        )
+            elif isinstance(label, int):
+                pass
+            else:
+                raise AssertionError()
+        if inferred_hierarchy is None:
+            raise ValueError('Cannot infer which hierarchy to use. Please pass `hierarchy` argument')
+
+        return inferred_hierarchy
+
     def __post_init__(self):
         if len(self.labels) < 2:
             raise ValueError(f'At least 2 labels have to be specified')
+        hierarchy = self.infer_hierarchy(self.labels, self.hierarchy)
+        numeric_labels = [to_numeric_label(label, hierarchy) for label in self.labels]
+        object.__setattr__(self, 'labels', numeric_labels)
+        object.__setattr__(self, 'hierarchy', hierarchy)
         if len(self.test_datasets) == 0:
             raise ValueError(f'At least 1 test dataset has to be specified')
 
@@ -169,7 +218,7 @@ class Workspace:
         for exp in self.experiments:
             if exp.name == exp_name:
                 return exp
-        raise ValueError(f'Unknown experiment: {exp_name}')
+        raise ValueError(f'Unknown experiment: {exp_name}, possible values are {list(map(lambda e: e.name, self.experiments))}')
 
     def get_task_by_name(self, task_name: str) -> Task:
         for exp in self.experiments:
