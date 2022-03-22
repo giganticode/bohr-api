@@ -1,5 +1,57 @@
+"""
+>>> class TestArtifact(Artifact): pass
+>>> test_train_dataset = Dataset(id='test_train_dataset', top_artifact=TestArtifact)
+>>> test_test_dataset = Dataset(id='test_test_dataset', top_artifact=TestArtifact)
+>>> task = Task(name='test_task', author='test_author', description='test_description', top_artifact=TestArtifact, labels=[CommitLabel.BugFix, CommitLabel.NonBugFix], test_datasets={test_test_dataset: None})
+>>> task.get_dataset_by_id('test_test_dataset')
+Dataset(id='test_test_dataset', top_artifact=<class 'core.TestArtifact'>, query=None, projection=None, n_datapoints=None)
+>>> task.get_dataset_by_id('unknown_dataset')
+Traceback (most recent call last):
+...
+ValueError: Dataset unknown_dataset is not found in task test_task
+>>> task_with_one_label = Task(name='test_task', author='test_author', description='test_description', top_artifact=TestArtifact, labels=[CommitLabel.NonBugFix], test_datasets={test_test_dataset: None})
+Traceback (most recent call last):
+...
+ValueError: At least 2 labels have to be specified
+>>> zero_test_datasets_task = Task(name='test_task', author='test_author', description='test_description', top_artifact=TestArtifact, labels=[CommitLabel.NonBugFix, CommitLabel.NonBugFix], test_datasets={})
+Traceback (most recent call last):
+...
+ValueError: At least 1 test dataset has to be specified
+>>> exp0 = Experiment(name='test', task=task, train_dataset=test_train_dataset)
+>>> exp0.heuristic_groups is None
+True
+>>> exp0.revision is None
+True
+>>> exp = Experiment(name='test', task=task, train_dataset=test_train_dataset, heuristics_classifier='')
+>>> exp.heuristic_groups is None
+True
+>>> exp.revision is None
+True
+>>> exp2 = Experiment(name='test', task=task, train_dataset=test_train_dataset, heuristics_classifier='@afaf233')
+>>> exp2.heuristic_groups is None
+True
+>>> exp2.revision
+'afaf233'
+>>> exp3 = Experiment(name='test', task=task, train_dataset=test_train_dataset, heuristics_classifier='group1:group2@afaf233')
+>>> exp3.heuristic_groups
+['group1', 'group2']
+>>> exp3.revision
+'afaf233'
+>>> exp4 = Experiment(name='test', task=task, train_dataset=test_train_dataset, heuristics_classifier=':@afaf233')
+>>> exp4.heuristic_groups
+Traceback (most recent call last):
+...
+ValueError: Invalid heuristic classifier syntax: :@afaf233. Correct syntax is: [[path1]:path2][@revision_sha]
+>>> exp5 = Experiment(name='test', task=task, train_dataset=test_train_dataset, heuristics_classifier=':group2@afaf233')
+>>> exp5.heuristic_groups
+Traceback (most recent call last):
+...
+ValueError: Invalid heuristic classifier syntax: :group2@afaf233. Correct syntax is: [[path1]:path2][@revision_sha]
+"""
+
 import functools
 import logging
+import re
 from abc import ABC
 from dataclasses import dataclass, field
 from subprocess import CalledProcessError
@@ -8,6 +60,7 @@ from typing import Callable, Optional, Type, Dict, TypeVar, List, Set, Tuple, Un
 from frozendict import frozendict
 
 from bohrlabels.core import Labels, Label, NumericLabel, LabelSubclass, to_numeric_label
+from bohrlabels.labels import CommitLabel
 
 logger = logging.getLogger(__name__)
 
@@ -171,13 +224,10 @@ class Experiment:
     name: str
     task: Task
     train_dataset: Dataset
-    heuristics_classifier: str
+    heuristics_classifier: Optional[str] = None
     extra_test_datasets: Dict[Dataset, Callable] = field(default_factory=frozendict)
 
     def __post_init__(self):
-        if self.heuristic_groups is not None and len(self.heuristic_groups) == 0:
-            raise ValueError(f'At least 1 heuristic group has to be specified')
-
         dataset_name_set = set()
         for dataset in self.datasets:
             count_before = len(dataset_name_set)
@@ -188,15 +238,21 @@ class Experiment:
 
     @property
     def heuristic_groups(self) -> Optional[List[str]]:
-        if '@' not in self.heuristics_classifier:
-            return None
-
-        paths, revision = self.heuristics_classifier.split('@')
-        return paths.split(':')
+        return self._parse_heuristic_classifier()[0]
 
     @property
-    def revision(self) -> str:
-        return self.heuristics_classifier.split('@')[-1]
+    def revision(self) -> Optional[str]:
+        return self._parse_heuristic_classifier()[1]
+
+    def _parse_heuristic_classifier(self) -> Tuple[Optional[List[str]], Optional[str]]:
+        if self.heuristics_classifier is None:
+            return None, None
+        CLASSIFIER_REGEX = re.compile('(?P<groups>(([^:@]+:)*[^:@]+)?)(@(?P<revision>[0-9a-fA-F]{7}|[0-9a-fA-F]{40}))?')
+        m = CLASSIFIER_REGEX.fullmatch(self.heuristics_classifier)
+        if not m:
+            raise ValueError(f'Invalid heuristic classifier syntax: {self.heuristics_classifier}. Correct syntax is: [[path1]:path2][@revision_sha]')
+        lst = m.group('groups')
+        return None if lst == '' else lst.split(':'), m.group('revision')
 
     def get_dataset_by_id(self, dataset_id: str) -> Dataset:
         for dataset in self.datasets:
