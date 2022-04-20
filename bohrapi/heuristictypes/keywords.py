@@ -102,7 +102,7 @@ class KeywordHeuristics(Heuristic):
     def __call__(
             self, f: Callable[..., Label]
     ) -> Union[HeuristicObj, List[HeuristicObj]]:
-        heuristic_list = HeuristicList(functools.wraps(f)(f))
+        heuristic_list = HeuristicList(f)
         if self.lf_per_key_word:
             for keyword_group in self.keywords:
                 name = self._create_name_from_ngram_set(
