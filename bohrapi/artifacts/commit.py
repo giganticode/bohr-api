@@ -15,6 +15,10 @@ logger = logging.getLogger(__name__)
 @dataclass(repr=False)
 class Commit(Artifact):
 
+    @staticmethod
+    def important_fields_map():
+        return {'_id': 'sha', 'message': 'message'}
+
     @property
     def sha(self):
         return self.raw_data['_id']
