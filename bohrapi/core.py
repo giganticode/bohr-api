@@ -1,7 +1,7 @@
 
 import functools
 import logging
-from abc import ABC
+from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from subprocess import CalledProcessError
 from typing import Callable, Optional, Type, Dict, TypeVar, List, Set, Tuple, Union
@@ -22,6 +22,13 @@ class Artifact:
 
     def __repr__(self):
         return super(Artifact, self).__repr__()
+
+
+@dataclass(repr=False)
+class MergeableArtifact(Artifact, ABC):
+    @abstractmethod
+    def single_identity(self) -> str:
+        pass
 
 
 ArtifactSubclass = TypeVar("ArtifactSubclass", bound="Artifact")

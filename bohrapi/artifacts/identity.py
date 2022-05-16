@@ -3,13 +3,13 @@ from dataclasses import dataclass
 from typing import List, Set, Callable, Optional
 
 import regex
-from bohrapi.core import Artifact
+from bohrapi.core import MergeableArtifact
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass(repr=False)
-class Identity(Artifact):
+class Identity(MergeableArtifact):
     """
     >>> Identity({}).normalized_email is None
     True
@@ -48,6 +48,13 @@ class Identity(Artifact):
         if len(names) > 1:
             raise ValueError(f'Multiple names are available: {names}')
         return names[0] if names[0] != '' else None
+
+    @property
+    def single_identity(self) -> str:
+        res = self.name or self.email or self.id
+        if res is None:
+            raise ValueError('At least one identity must be present')
+        return res
 
     @property
     def normalized_name(self) -> Optional[str]:
