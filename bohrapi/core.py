@@ -8,12 +8,11 @@ from typing import Callable, Optional, Type, Dict, TypeVar, List, Set, Tuple, Un
 
 from frozendict import frozendict
 
-from bohrlabels.core import Labels, Label, NumericLabel, LabelSubclass
-from bohrlabels.labels import CommitLabel
+from bohrlabels.core import OneOrManyLabels, Label
 
 logger = logging.getLogger(__name__)
 
-HeuristicFunction = Callable[..., Optional[Labels]]
+HeuristicFunction = Callable[..., Optional[OneOrManyLabels]]
 
 
 @dataclass(repr=False)
@@ -32,7 +31,7 @@ class MergeableArtifact(Artifact, ABC):
 
 
 ArtifactSubclass = TypeVar("ArtifactSubclass", bound="Artifact")
-ArtifactType = Type[ArtifactSubclass]
+ArtifactType: object = Type[ArtifactSubclass]
 
 
 class HeuristicObj:
@@ -98,14 +97,19 @@ class Heuristic:
 @dataclass(frozen=True)
 class Dataset(ABC):
     id: str
-    top_artifact: ArtifactType
+    heuristic_input_artifact_type: ArtifactType
     query: Optional[Dict] = field(compare=False, default=None)
     projection: Optional[Dict] = field(compare=False, default=None)
     n_datapoints: Optional[int] = None
+    path: Optional[str] = None
 
+    def __post_init__(self):
+        if self.path is not None and self.query is not None:
+            raise ValueError(f'When defining local dataset (when specifying "path" attribute)'
+                             f'"query" attribute must not be present')
 
 @dataclass(frozen=True)
-class MatchingDataset(Dataset):
+class GroupingDataset(Dataset):
     pass
 
 
@@ -117,20 +121,27 @@ class Task:
     name: str
     author: str
     description: Optional[str]
-    top_artifact: ArtifactType
-    labels: List[Union[Label, NumericLabel]] = field()
+    heuristic_input_artifact_type: ArtifactType
     test_datasets: Dict[Dataset, DataPointToLabelFunction]
-    hierarchy: Optional[Type[LabelSubclass]] = None
+
+
+@dataclass(frozen=True)
+class LabelingTask(Task):
+    labels: Tuple[OneOrManyLabels, ...] = field()
+    class_balance: Tuple[float, ...] = None
+
+
+class GroupingTask(Task):
+    pass
 
 
 @dataclass(frozen=True)
 class Experiment:
     name: str
     task: Task
-    train_dataset: Dataset
-    class_balance: Optional[Tuple[float, ...]] = None
+    train_dataset: Optional[Dataset]
     heuristics_classifier: Optional[str] = None
-    extra_test_datasets: Dict[Dataset, Callable] = field(default_factory=frozendict)
+    extra_test_datasets: Dict[Dataset, DataPointToLabelFunction] = field(default_factory=frozendict)
 
 
 @dataclass(frozen=True)
